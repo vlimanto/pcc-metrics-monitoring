@@ -1,0 +1,89 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: syslogng-config
+  namespace: logging
+data:
+  syslog-ng.conf: |
+      @version: 4.8
+      @include "scl.conf"
+      source s_net {
+         network(transport("tcp") port(2514));
+      };
+      parser p_kv {
+         kv-parser( prefix("TW") pair-separator(" ") );
+      };
+      destination d_loki {
+        loki(
+          url("loki.monitoring.svc.cluster.local:9096")
+          labels(
+            "service_name" => "$PROGRAM",
+            "twistlock_type" => "${TW.type}",
+          )
+          workers(3)
+        );
+      };
+      destination d_stdout {
+        stdout();
+      };
+      log {source(s_net); parser(p_kv); destination(d_stdout); destination(d_loki);};
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syslog-ng
+  namespace: logging
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-security-group-prefix-lists: pl-05b0eae874665e087
+spec:
+  selector:
+    app: syslog-ng
+  type: LoadBalancer
+  ports:
+  - name: syslog-ng
+    protocol: TCP
+    port: 2514
+    targetPort: syslog
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syslog-ng
+  namespace: logging
+  labels:
+    app: syslog-ng
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syslog-ng
+  template:
+    metadata:
+      labels:
+        app: syslog-ng
+    spec:
+      containers:
+      - name: syslog-ng
+        image: docker.io/balabit/syslog-ng:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: syslog
+          containerPort: 2514
+        command:
+          - syslog-ng
+          - --no-caps
+          - -evd
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/syslog-ng
+      restartPolicy: Always
+      volumes:
+      - name: config-volume
+        configMap:
+          name: syslogng-config
