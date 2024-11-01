@@ -9,6 +9,7 @@ This setups Prometheus, Grafana, Loki and Syslog-NG infrastructure in AWS EKS Cl
 - [Prisma Sending syslog messages to a network endpoint](https://docs.prismacloud.io/en/enterprise-edition/content-collections/runtime-security/audit/logging#sending-syslog-messages-to-a-network-endpoint)
 - [SyslogNG Storing messages in a Grafana Loki database](https://syslog-ng.github.io/admin-guide/070_Destinations/125_Loki/README)
 - [Loki - AWS deployment S3 Single Store](https://grafana.com/docs/loki/latest/configure/storage/#aws-deployment-s3-single-store)
+- [View Agentless Scan Progress](https://pan.dev/prisma-cloud/api/cwpp/get-agentless-progress/) into Grafana Metrics
 
 ## Prerequisites
 
@@ -27,6 +28,10 @@ This setups Prometheus, Grafana, Loki and Syslog-NG infrastructure in AWS EKS Cl
    - ***loki_s3_bucket_name*** and ***loki_iam_role*** need to replace variables in **manifests/loki.yaml**
 5. After modifying the necessary Kubernetes Manifests, setup kubeconfig to point to new EKS cluster
    - E.g.: `aws eks --region $(terraform output -raw region) update-kubeconfig --name $(terraform output -raw cluster_name)`
+6. Apply all the Kubernetes Manifests, i.e.: `kubectl apply manifests/*.yaml`
+7. Find out the AWS Load Balancer *EXTERNAL-IP* for use:
+   - `kubectl -n logging get svc syslog-ng` for use to configure [Prisma Sending syslog messages to a network endpoint](https://docs.prismacloud.io/en/enterprise-edition/content-collections/runtime-security/audit/logging#sending-syslog-messages-to-a-network-endpoint)
+   - `kubectl -n monitoring get svc grafana` for viewing the **Grafana** UI
 
 # To-Do
 
@@ -34,7 +39,6 @@ This setups Prometheus, Grafana, Loki and Syslog-NG infrastructure in AWS EKS Cl
 - [AWS Load Balancer Controller Installation](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.9/deploy/installation/)
 - [NLB TLS Termination](https://kubernetes-sigs.github.io/aws-load-balancer-controller/v2.9/guide/use_cases/nlb_tls_termination/)
 - [Configure RBAC in Grafana](https://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/configure-rbac/)
-- [View Agentless Scan Progress](https://pan.dev/prisma-cloud/api/cwpp/get-agentless-progress/) into Grafana Metrics
 - [View Registry Scan Progress](https://pan.dev/prisma-cloud/api/cwpp/get-registry-progress/)
 
 # References

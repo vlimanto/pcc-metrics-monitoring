@@ -67,6 +67,47 @@ data:
          static_configs:
          - targets:
            - localhost:9090
+
+       # Prisma Cloud API monitoring
+       - job_name: agentlessProgress  
+         metrics_path: /probe
+         params:
+           module: [agentlessScan]
+         static_configs:
+         - targets:
+           - https://us-west1.cloud.twistlock.com/us-4-161055283/api/v33.01/agentless/progress
+         relabel_configs:
+            - source_labels: [__address__]
+              target_label: __param_target
+            - source_labels: [__param_target]
+              target_label: instance
+            - target_label: __address__
+              ## Location of the json exporter's real <hostname>:<port>
+              replacement: localhost:7979
+  
+  json-exporter.yml: |
+      modules:
+        agentlessScan:
+          metrics:
+          - name: agentless_scanned
+            help: Scanned is the number of entities for which the scan completed
+            path: '{..scanned}'
+            labels:
+              agentless_scan_type: '{..type}'
+              agentless_scan_title: '{..title}'
+          - name: agentless_total
+            help: Total is the total amount of entities that should be scanned
+            path: '{..total}'
+            labels:
+              agentless_scan_type: '{..type}'
+              agentless_scan_title: '{..title}'
+          http_client_config:
+            tls_config:
+              insecure_skip_verify: true
+            basic_auth:
+              username_file: '/mnt/secrets-store/username'
+              password_file: '/mnt/secrets-store/password'
+
 ---
 
 apiVersion: apps/v1
@@ -96,13 +137,30 @@ spec:
     spec:
       serviceAccountName: prometheus
       containers:
+      - name: json-exporter
+        image: docker.io/prometheuscommunity/json-exporter:master
+        imagePullPolicy: IfNotPresent
+        args:
+          - '--config.file=/etc/prometheus/json-exporter.yml'
+          - '--log.level=debug'
+          - '--web.listen-address=:7979'
+        ports:
+        - name: probe
+          containerPort: 7979
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/prometheus
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
       - name: prometheus
         image: docker.io/prom/prometheus:latest
         imagePullPolicy: IfNotPresent
         args:
-          - '--storage.tsdb.retention=6h'
+          - '--storage.tsdb.retention.time=6h'
           - '--storage.tsdb.path=/prometheus'
           - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--log.level=debug'
         command:
         - /bin/prometheus
         ports:
@@ -129,7 +187,6 @@ spec:
         configMap:
           name: prometheus-config
       - name: data
-        #emptyDir: {}
         persistentVolumeClaim:
           claimName: prometheus-pvc
       - name: secrets-store-inline
