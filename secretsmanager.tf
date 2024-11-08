@@ -1,14 +1,3 @@
-provider "helm" {
-  kubernetes {
-    host                   = module.eks.cluster_endpoint
-    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
-      command     = "aws"
-    }
-  }
-}
 
 resource "helm_release" "secrets-store-csi-driver" {
   name       = "csi-secrets-store"
@@ -67,3 +56,53 @@ resource "aws_iam_role_policy_attachment" "prometheus_attach" {
   policy_arn = aws_iam_policy.prometheus_policy.arn
   role       = aws_iam_role.prometheus_role.name
 }
+
+resource "kubernetes_manifest" "monitoring_namespace" {
+  provider = kubernetes
+  manifest = {
+    "apiVersion" = "v1"
+    "kind"       = "Namespace"
+    "metadata" = {
+      "name"      = "monitoring"
+    }
+  }
+}
+
+resource "kubernetes_manifest" "prometheus_service_account" {
+  depends_on = [
+    kubernetes_manifest.monitoring_namespace
+  ]
+  provider = kubernetes
+  manifest = {
+    "apiVersion" = "v1"
+    "kind"       = "ServiceAccount"
+    "metadata" = {
+      "name"      = "prometheus"
+      "namespace" = "monitoring"
+      "annotations" = {
+        "eks.amazonaws.com/role-arn"  =  aws_iam_role.prometheus_role.arn
+      }
+    }
+  }
+}
+
+
+
+
+data "http" "aws-provider-installer" {
+  url = "https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml"
+}
+  
+locals {
+  raw_manifests = provider::kubernetes::manifest_decode_multi(data.http.aws-provider-installer.response_body)
+}
+
+resource "kubernetes_manifest" "aws-provider-installer" {
+  for_each = {
+    for manifest in local.raw_manifests:
+    "${manifest.kind}--${manifest.metadata.name}" => manifest
+  }
+  provider = kubernetes
+  manifest = each.value
+}
+

@@ -161,6 +161,8 @@ kind: Service
 metadata:
   name: grafana
   namespace: monitoring
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   ports:
     - port: 3000

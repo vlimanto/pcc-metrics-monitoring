@@ -5,14 +5,6 @@ metadata:
   name: monitoring
 ---
 apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: prometheus
-  namespace: monitoring
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::010438472260:role/pcc-monitoring-QagwAMNU-prometheus-role
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: prometheus-pvc
@@ -84,7 +76,22 @@ data:
             - target_label: __address__
               ## Location of the json exporter's real <hostname>:<port>
               replacement: localhost:7979
-  
+       - job_name: registryScanProgress  
+         metrics_path: /probe
+         params:
+           module: [registryScan]
+         static_configs:
+         - targets:
+           - https://us-west1.cloud.twistlock.com/us-4-161055283/api/v33.01/registry/progress
+         relabel_configs:
+            - source_labels: [__address__]
+              target_label: __param_target
+            - source_labels: [__param_target]
+              target_label: instance
+            - target_label: __address__
+              ## Location of the json exporter's real <hostname>:<port>
+              replacement: localhost:7979
+
   json-exporter.yml: |
       modules:
         agentlessScan:
@@ -101,6 +108,34 @@ data:
             labels:
               agentless_scan_type: '{..type}'
               agentless_scan_title: '{..title}'
+          http_client_config:
+            tls_config:
+              insecure_skip_verify: true
+            basic_auth:
+              username_file: '/mnt/secrets-store/username'
+              password_file: '/mnt/secrets-store/password'
+        registryScan:
+          metrics:
+          - name: registry_discovery
+            help: Discovery is the first step of Registry Scanning
+            type: object
+            path: '{[?(@.isScanOngoing == true)]}'
+            values:
+              scanned: '{@.discovery.scanned}'
+              total: '{@.discovery.total}'
+            labels:
+              registry_discovery_id: '{@.discovery.id}'
+              registry_discovery_title: '{@.discovery.title}'
+          - name: registry_imageScan
+            help: Image Scanning is the second step of Registry Scanning
+            type: object
+            path: '{[?(@.isScanOngoing == true)]}'
+            values:
+              scanned: '{@.imageScan.scanned}'
+              total: '{@.imageScan.total}'
+            labels:
+              registry_imageScan_id: '{@.imageScan.id}'
+              registry_imageScan_title: '{@.imageScan.title}'
           http_client_config:
             tls_config:
               insecure_skip_verify: true
